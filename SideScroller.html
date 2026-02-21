@@ -28,9 +28,9 @@ const ctx = canvas.getContext("2d");
 
 // Constants
 const GROUND_Y = 220;
-const GRAVITY = 0.9;
-const JUMP_FORCE = -17; // ⬆️ ~20% higher jump
-const SPEED = 6;
+const GRAVITY = 0.45;   // ⬇️ 50% less gravity
+const JUMP_FORCE = -17;
+let speed = 3;          // starts 50% slower
 
 // State
 let gameOver = false;
@@ -82,6 +82,7 @@ document.addEventListener("keydown", e => {
 function resetGame() {
     gameOver = false;
     score = 0;
+    speed = 3;
     player.y = GROUND_Y;
     player.vy = 0;
     player.onGround = true;
@@ -103,11 +104,12 @@ function update() {
     }
 
     // Obstacle movement
-    obstacle.x -= SPEED;
+    obstacle.x -= speed;
 
     // Respawn obstacle once passed
     if (obstacle.x + obstacle.w < player.x - 50) {
         score++;
+        speed *= 1.05; // increase speed by 5%
         obstacle = createObstacle();
     }
 
@@ -142,6 +144,7 @@ function draw() {
     ctx.fillStyle = "#000";
     ctx.font = "18px Arial";
     ctx.fillText("Score: " + score, 10, 25);
+    ctx.fillText("Speed: " + speed.toFixed(2), 10, 45);
 
     if (gameOver) {
         ctx.font = "32px Arial";
