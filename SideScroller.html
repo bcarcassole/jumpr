@@ -12,12 +12,11 @@
         align-items: center;
         height: 100vh;
         font-family: Arial, sans-serif;
-        color: white;
     }
 
     canvas {
         background: linear-gradient(#87ceeb, #e0f6ff);
-        border: 3px solid #fff;
+        border: 3px solid white;
     }
 </style>
 </head>
@@ -29,13 +28,14 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-const GROUND_Y = 240;
+const GROUND_Y = 220;
 const GRAVITY = 0.7;
 const JUMP_POWER = -12;
 const SPEED = 6;
 
-let gameOver = false;
 let score = 0;
+let gameOver = false;
+let obstacleCooldown = 0;
 
 // Player
 const player = {
@@ -60,55 +60,55 @@ function spawnObstacle() {
     };
 }
 
-// Controls
+// Input
 document.addEventListener("keydown", e => {
     if (e.code === "Space") {
         if (!player.jumping && !gameOver) {
             player.velocityY = JUMP_POWER;
             player.jumping = true;
+        } else if (gameOver) {
+            resetGame();
         }
-        if (gameOver) resetGame();
     }
 });
 
 function resetGame() {
     score = 0;
-    obstacle = null;
     gameOver = false;
+    obstacle = null;
+    obstacleCooldown = 0;
     player.y = GROUND_Y;
     player.velocityY = 0;
 }
 
-// Physics & logic
+// Update logic
 function update() {
     if (gameOver) return;
 
-    // Player gravity
+    // Player physics
     player.velocityY += GRAVITY;
     player.y += player.velocityY;
 
-    // Ground collision
     if (player.y >= GROUND_Y) {
         player.y = GROUND_Y;
         player.velocityY = 0;
         player.jumping = false;
     }
 
-    // Obstacle movement
-    if (!obstacle) {
-        spawnObstacle();
-    } else {
+    // Obstacle logic
+    if (obstacle) {
         obstacle.x -= SPEED;
 
-        // Score
+        // Score when cleared
         if (!obstacle.passed && obstacle.x + obstacle.width < player.x) {
-            score++;
             obstacle.passed = true;
+            score++;
         }
 
-        // Remove obstacle
+        // Remove obstacle after leaving screen
         if (obstacle.x + obstacle.width < 0) {
             obstacle = null;
+            obstacleCooldown = 60; // delay before next obstacle
         }
 
         // Collision detection
@@ -120,6 +120,12 @@ function update() {
         ) {
             gameOver = true;
         }
+    } else {
+        if (obstacleCooldown > 0) {
+            obstacleCooldown--;
+        } else {
+            spawnObstacle();
+        }
     }
 }
 
@@ -129,7 +135,7 @@ function draw() {
 
     // Ground
     ctx.fillStyle = "#444";
-    ctx.fillRect(0, GROUND_Y + player.height, canvas.width, 50);
+    ctx.fillRect(0, GROUND_Y + player.height, canvas.width, 40);
 
     // Player
     ctx.fillStyle = "#ffcc00";
@@ -148,11 +154,10 @@ function draw() {
 
     // Game over text
     if (gameOver) {
-        ctx.fillStyle = "#000";
         ctx.font = "32px Arial";
         ctx.fillText("Game Over", 310, 130);
         ctx.font = "18px Arial";
-        ctx.fillText("Press Space to Restart", 300, 165);
+        ctx.fillText("Press Space to Restart", 290, 165);
     }
 }
 
