@@ -14,7 +14,7 @@
     }
     canvas {
         background: linear-gradient(#87ceeb, #e0f6ff);
-        border: 3px solid #fff;
+        border: 3px solid white;
     }
 </style>
 </head>
@@ -46,15 +46,24 @@ const player = {
     onGround: true
 };
 
-// Obstacle (always exists)
+// Obstacle definitions (all jumpable)
+const obstacleTypes = [
+    { w: 30, h: 50, color: "#d9534f" }, // normal
+    { w: 30, h: 80, color: "#5bc0de" }, // tall
+    { w: 60, h: 40, color: "#5cb85c" }, // wide
+    { w: 50, h: 60, color: "#f0ad4e" }  // medium
+];
+
 let obstacle = createObstacle();
 
 function createObstacle() {
+    const type = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
     return {
         x: canvas.width + 100,
-        y: GROUND_Y + 10,
-        w: 30,
-        h: 50
+        y: GROUND_Y + (player.h - type.h),
+        w: type.w,
+        h: type.h,
+        color: type.color
     };
 }
 
@@ -96,13 +105,13 @@ function update() {
     // Obstacle movement
     obstacle.x -= SPEED;
 
-    // Spawn next obstacle immediately after passing player
+    // Respawn obstacle once passed
     if (obstacle.x + obstacle.w < player.x - 50) {
         score++;
         obstacle = createObstacle();
     }
 
-    // Collision
+    // Collision detection
     if (
         player.x < obstacle.x + obstacle.w &&
         player.x + player.w > obstacle.x &&
@@ -126,7 +135,7 @@ function draw() {
     ctx.fillRect(player.x, player.y, player.w, player.h);
 
     // Obstacle
-    ctx.fillStyle = "#d9534f";
+    ctx.fillStyle = obstacle.color;
     ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
 
     // UI
