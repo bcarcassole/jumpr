@@ -29,7 +29,7 @@ const ctx = canvas.getContext("2d");
 // Constants
 const GROUND_Y = 220;
 const GRAVITY = 0.9;
-const JUMP_FORCE = -14;
+const JUMP_FORCE = -17; // ⬆️ ~20% higher jump
 const SPEED = 6;
 
 // State
@@ -46,7 +46,7 @@ const player = {
     onGround: true
 };
 
-// Obstacle definitions (all jumpable)
+// Obstacle types (all jumpable)
 const obstacleTypes = [
     { w: 30, h: 50, color: "#d9534f" }, // normal
     { w: 30, h: 80, color: "#5bc0de" }, // tall
