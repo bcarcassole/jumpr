@@ -6,7 +6,7 @@
 <style>
     body {
         margin: 0;
-        background: #111;
+        background: #0b0b0b;
         display: flex;
         justify-content: center;
         align-items: center;
@@ -14,7 +14,6 @@
         font-family: Arial, sans-serif;
     }
     canvas {
-        background: linear-gradient(#87ceeb, #e0f6ff);
         border: 3px solid white;
     }
 </style>
@@ -27,10 +26,12 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-// ===================
-// AUDIO (Web Audio)
-// ===================
+// ==================================================
+// AUDIO (SAFE INITIALIZATION)
+// ==================================================
 let audioCtx = null;
+let introMusic = null;
+let gameMusic = null;
 
 function initAudio() {
     if (!audioCtx) {
@@ -38,17 +39,60 @@ function initAudio() {
     }
 }
 
-// Jump sound ("boing")
-function playJumpSound() {
-    if (!audioCtx) return;
+function stopMusic() {
+    [introMusic, gameMusic].forEach(m => {
+        if (m) {
+            m.stop();
+            clearInterval(m.interval);
+        }
+    });
+    introMusic = gameMusic = null;
+}
 
+// Intro music
+function startIntroMusic() {
+    stopMusic();
+    introMusic = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    introMusic.type = "triangle";
+    gain.gain.value = 0.08;
+
+    introMusic.connect(gain).connect(audioCtx.destination);
+    introMusic.start();
+
+    const notes = [220, 277, 330, 440];
+    let i = 0;
+    introMusic.interval = setInterval(() => {
+        introMusic.frequency.setValueAtTime(notes[i % notes.length], audioCtx.currentTime);
+        i++;
+    }, 500);
+}
+
+// Gameplay music
+function startGameMusic() {
+    stopMusic();
+    gameMusic = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    gameMusic.type = "sine";
+    gain.gain.value = 0.06;
+
+    gameMusic.connect(gain).connect(audioCtx.destination);
+    gameMusic.start();
+
+    gameMusic.interval = setInterval(() => {
+        gameMusic.frequency.setValueAtTime(140 + Math.random() * 60, audioCtx.currentTime);
+    }, 400);
+}
+
+// Jump sound
+function playJumpSound() {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
 
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(220, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.15);
-
+    osc.frequency.setValueAtTime(250, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(500, audioCtx.currentTime + 0.15);
     gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
 
@@ -59,41 +103,34 @@ function playJumpSound() {
 
 // Crash sound
 function playCrashSound() {
-    if (!audioCtx) return;
-
-    const bufferSize = audioCtx.sampleRate * 0.2;
-    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.2, audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
 
-    for (let i = 0; i < bufferSize; i++) {
-        data[i] = Math.random() * 2 - 1;
-    }
-
-    const source = audioCtx.createBufferSource();
+    const src = audioCtx.createBufferSource();
     const gain = audioCtx.createGain();
+    gain.gain.value = 0.4;
 
-    source.buffer = buffer;
-    gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-
-    source.connect(gain).connect(audioCtx.destination);
-    source.start();
+    src.buffer = buffer;
+    src.connect(gain).connect(audioCtx.destination);
+    src.start();
 }
 
-// ===================
+// ==================================================
 // GAME CONSTANTS
-// ===================
+// ==================================================
 const GROUND_Y = 220;
 const GRAVITY = 0.45;
 const JUMP_FORCE = -17;
 
-// ===================
-// GAME STATE
-// ===================
+// ==================================================
+// STATE
+// ==================================================
+let gameStarted = false;
+let gameOver = false;
 let speed = 3;
 let score = 0;
-let gameOver = false;
-let gameStarted = false;
+let time = 0;
 
 // Player
 const player = {
@@ -105,12 +142,12 @@ const player = {
     onGround: true
 };
 
-// Obstacle types
+// Obstacles
 const obstacleTypes = [
-    { w: 30, h: 50, color: "#d9534f" },
-    { w: 30, h: 80, color: "#5bc0de" },
-    { w: 60, h: 40, color: "#5cb85c" },
-    { w: 50, h: 60, color: "#f0ad4e" }
+    { w: 30, h: 50, color: "#ff5c5c" },
+    { w: 30, h: 80, color: "#5cc8ff" },
+    { w: 60, h: 40, color: "#5cff8a" },
+    { w: 50, h: 60, color: "#ffd35c" }
 ];
 
 let obstacle = null;
@@ -126,16 +163,18 @@ function createObstacle() {
     };
 }
 
-// ===================
+// ==================================================
 // INPUT
-// ===================
+// ==================================================
 document.addEventListener("keydown", e => {
     if (e.code !== "Space") return;
 
     initAudio();
 
     if (!gameStarted) {
-        startGame();
+        gameStarted = true;
+        resetGame();
+        startGameMusic();
         return;
     }
 
@@ -145,13 +184,9 @@ document.addEventListener("keydown", e => {
         playJumpSound();
     } else if (gameOver) {
         resetGame();
+        startGameMusic();
     }
 });
-
-function startGame() {
-    gameStarted = true;
-    resetGame();
-}
 
 function resetGame() {
     gameOver = false;
@@ -163,13 +198,14 @@ function resetGame() {
     obstacle = createObstacle();
 }
 
-// ===================
+// ==================================================
 // UPDATE
-// ===================
+// ==================================================
 function update() {
+    time++;
+
     if (!gameStarted || gameOver) return;
 
-    // Player physics
     player.vy += GRAVITY;
     player.y += player.vy;
 
@@ -179,17 +215,14 @@ function update() {
         player.onGround = true;
     }
 
-    // Obstacle movement
     obstacle.x -= speed;
 
-    // Passed obstacle
     if (obstacle.x + obstacle.w < player.x - 50) {
         score++;
         speed *= 1.05;
         obstacle = createObstacle();
     }
 
-    // Collision
     if (
         player.x < obstacle.x + obstacle.w &&
         player.x + player.w > obstacle.x &&
@@ -197,39 +230,53 @@ function update() {
         player.y + player.h > obstacle.y
     ) {
         gameOver = true;
+        stopMusic();
         playCrashSound();
+        startIntroMusic();
     }
 }
 
-// ===================
+// ==================================================
 // DRAW
-// ===================
+// ==================================================
+function drawStartScreen() {
+    const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    grad.addColorStop(0, "#1b1f3b");
+    grad.addColorStop(1, "#0f2027");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const bounce = Math.sin(time * 0.05) * 5;
+    ctx.fillStyle = "#fff";
+    ctx.font = "72px Arial Black";
+    ctx.fillText("JUMPR", 260, 140 + bounce);
+
+    ctx.font = "20px Arial";
+    ctx.globalAlpha = 0.6 + Math.sin(time * 0.1) * 0.4;
+    ctx.fillText("Press Spacebar to Start", 265, 190);
+    ctx.globalAlpha = 1;
+}
+
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Startup screen
     if (!gameStarted) {
-        ctx.fillStyle = "#000";
-        ctx.font = "64px Arial";
-        ctx.fillText("JUMPR", 280, 130);
-        ctx.font = "20px Arial";
-        ctx.fillText("Press Spacebar to Start", 265, 170);
+        drawStartScreen();
         return;
     }
 
-    // Ground
+    ctx.fillStyle = "#87ceeb";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
     ctx.fillStyle = "#444";
     ctx.fillRect(0, GROUND_Y + player.h, canvas.width, 40);
 
-    // Player
     ctx.fillStyle = "#ffcc00";
     ctx.fillRect(player.x, player.y, player.w, player.h);
 
-    // Obstacle
     ctx.fillStyle = obstacle.color;
     ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
 
-    // UI
     ctx.fillStyle = "#000";
     ctx.font = "18px Arial";
     ctx.fillText("Score: " + score, 10, 25);
@@ -242,9 +289,9 @@ function draw() {
     }
 }
 
-// ===================
+// ==================================================
 // LOOP
-// ===================
+// ==================================================
 function loop() {
     update();
     draw();
