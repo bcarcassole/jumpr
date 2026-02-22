@@ -15,6 +15,7 @@
     }
     canvas {
         border: 3px solid white;
+        background: black;
     }
 </style>
 </head>
@@ -27,11 +28,11 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
 // ==================================================
-// AUDIO (SAFE INITIALIZATION)
+// AUDIO (CHROME-SAFE)
 // ==================================================
-let audioCtx = null;
-let introMusic = null;
-let gameMusic = null;
+let audioCtx;
+let introOsc, gameOsc;
+let audioUnlocked = false;
 
 function initAudio() {
     if (!audioCtx) {
@@ -40,79 +41,52 @@ function initAudio() {
 }
 
 function stopMusic() {
-    [introMusic, gameMusic].forEach(m => {
-        if (m) {
-            m.stop();
-            clearInterval(m.interval);
-        }
-    });
-    introMusic = gameMusic = null;
+    if (introOsc) introOsc.stop();
+    if (gameOsc) gameOsc.stop();
+    introOsc = gameOsc = null;
 }
 
-// Intro music
 function startIntroMusic() {
     stopMusic();
-    introMusic = audioCtx.createOscillator();
+    introOsc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-
-    introMusic.type = "triangle";
-    gain.gain.value = 0.08;
-
-    introMusic.connect(gain).connect(audioCtx.destination);
-    introMusic.start();
-
-    const notes = [220, 277, 330, 440];
-    let i = 0;
-    introMusic.interval = setInterval(() => {
-        introMusic.frequency.setValueAtTime(notes[i % notes.length], audioCtx.currentTime);
-        i++;
-    }, 500);
+    introOsc.type = "triangle";
+    introOsc.frequency.value = 220;
+    gain.gain.value = 0.07;
+    introOsc.connect(gain).connect(audioCtx.destination);
+    introOsc.start();
 }
 
-// Gameplay music
 function startGameMusic() {
     stopMusic();
-    gameMusic = audioCtx.createOscillator();
+    gameOsc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-
-    gameMusic.type = "sine";
-    gain.gain.value = 0.06;
-
-    gameMusic.connect(gain).connect(audioCtx.destination);
-    gameMusic.start();
-
-    gameMusic.interval = setInterval(() => {
-        gameMusic.frequency.setValueAtTime(140 + Math.random() * 60, audioCtx.currentTime);
-    }, 400);
+    gameOsc.type = "sine";
+    gameOsc.frequency.value = 140;
+    gain.gain.value = 0.05;
+    gameOsc.connect(gain).connect(audioCtx.destination);
+    gameOsc.start();
 }
 
-// Jump sound
-function playJumpSound() {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-
-    osc.frequency.setValueAtTime(250, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(500, audioCtx.currentTime + 0.15);
-    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.2);
+function jumpSound() {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.frequency.setValueAtTime(300, audioCtx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.15);
+    g.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+    o.connect(g).connect(audioCtx.destination);
+    o.start();
+    o.stop(audioCtx.currentTime + 0.2);
 }
 
-// Crash sound
-function playCrashSound() {
+function crashSound() {
     const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.2, audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-
     const src = audioCtx.createBufferSource();
-    const gain = audioCtx.createGain();
-    gain.gain.value = 0.4;
-
     src.buffer = buffer;
-    src.connect(gain).connect(audioCtx.destination);
+    src.connect(audioCtx.destination);
     src.start();
 }
 
@@ -134,13 +108,23 @@ let time = 0;
 
 // Player
 const player = {
-    x: 100,
+    x: 120,
     y: GROUND_Y,
     w: 40,
-    h: 40,
+    h: 50,
     vy: 0,
-    onGround: true
+    onGround: true,
+    tilt: 0
 };
+
+// Background layers
+let clouds = Array.from({length: 5}, () => ({
+    x: Math.random() * canvas.width,
+    y: 30 + Math.random() * 60,
+    size: 20 + Math.random() * 20
+}));
+
+let cityX = 0;
 
 // Obstacles
 const obstacleTypes = [
@@ -150,18 +134,7 @@ const obstacleTypes = [
     { w: 50, h: 60, color: "#ffd35c" }
 ];
 
-let obstacle = null;
-
-function createObstacle() {
-    const t = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
-    return {
-        x: canvas.width + 100,
-        y: GROUND_Y + (player.h - t.h),
-        w: t.w,
-        h: t.h,
-        color: t.color
-    };
-}
+let obstacle;
 
 // ==================================================
 // INPUT
@@ -171,8 +144,15 @@ document.addEventListener("keydown", e => {
 
     initAudio();
 
+    // First-ever key press → unlock audio + intro music
+    if (!gameStarted && !audioUnlocked) {
+        audioUnlocked = true;
+        startIntroMusic();
+    }
+
     if (!gameStarted) {
         gameStarted = true;
+        stopMusic();
         resetGame();
         startGameMusic();
         return;
@@ -181,7 +161,7 @@ document.addEventListener("keydown", e => {
     if (!gameOver && player.onGround) {
         player.vy = JUMP_FORCE;
         player.onGround = false;
-        playJumpSound();
+        jumpSound();
     } else if (gameOver) {
         resetGame();
         startGameMusic();
@@ -198,13 +178,37 @@ function resetGame() {
     obstacle = createObstacle();
 }
 
+function createObstacle() {
+    const t = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+    return {
+        x: canvas.width + 100,
+        y: GROUND_Y + (player.h - t.h),
+        w: t.w,
+        h: t.h,
+        color: t.color
+    };
+}
+
 // ==================================================
 // UPDATE
 // ==================================================
 function update() {
     time++;
 
+    // ✅ Backgrounds ALWAYS move
+    cityX -= 0.3;
+
+    clouds.forEach(c => {
+        c.x -= 0.2;
+        if (c.x < -80) c.x = canvas.width + 80;
+    });
+
+    // ⛔ Stop here if gameplay isn't active
     if (!gameStarted || gameOver) return;
+
+    // ======================
+    // Gameplay logic only
+    // ======================
 
     player.vy += GRAVITY;
     player.y += player.vy;
@@ -213,6 +217,9 @@ function update() {
         player.y = GROUND_Y;
         player.vy = 0;
         player.onGround = true;
+        player.tilt *= 0.8;
+    } else {
+        player.tilt = -0.3;
     }
 
     obstacle.x -= speed;
@@ -223,6 +230,7 @@ function update() {
         obstacle = createObstacle();
     }
 
+    // Collision detection
     if (
         player.x < obstacle.x + obstacle.w &&
         player.x + player.w > obstacle.x &&
@@ -231,7 +239,7 @@ function update() {
     ) {
         gameOver = true;
         stopMusic();
-        playCrashSound();
+        crashSound();
         startIntroMusic();
     }
 }
@@ -239,14 +247,113 @@ function update() {
 // ==================================================
 // DRAW
 // ==================================================
+function drawCity() {
+    ctx.save();
+
+    // Distant city haze
+    ctx.globalAlpha = 0.35;
+
+    const groundY = GROUND_Y + player.h;
+    const buildingSpacing = 90;
+
+    for (let i = 0; i < 16; i++) {
+        const x = (i * buildingSpacing + cityX) % (canvas.width + buildingSpacing);
+        const width = 40 + (i % 3) * 15;
+        const height = 70 + (i % 5) * 22;
+
+        const buildingTopY = groundY - height;
+
+        // Building body
+        ctx.fillStyle = "#1f2433";
+        ctx.fillRect(x, buildingTopY, width, height);
+
+        // Windows
+        const rows = Math.floor(height / 18);
+        const cols = Math.floor(width / 12);
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if ((r + c + i) % 3 === 0) {
+                    ctx.fillStyle = Math.random() > 0.5
+                        ? "rgba(255, 220, 120, 0.55)"
+                        : "rgba(180, 220, 255, 0.45)";
+
+                    ctx.fillRect(
+                        x + 6 + c * 12,
+                        buildingTopY + 6 + r * 18,
+                        6,
+                        8
+                    );
+                }
+            }
+        }
+    }
+
+    ctx.restore();
+}
+
+function drawClouds() {
+    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    clouds.forEach(c => {
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.size, 0, Math.PI * 2);
+        ctx.arc(c.x + c.size, c.y + 5, c.size * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+    });
+}
+
+function drawPlayer() {
+    ctx.save();
+    ctx.translate(player.x + 20, player.y + 40);
+    ctx.rotate(player.tilt);
+    ctx.translate(-20, -40);
+
+    // Skateboard
+    ctx.fillStyle = "#2ecc71";
+    ctx.beginPath();
+    ctx.roundRect(0, 45, 60, 10, 5);
+    ctx.fill();
+
+    // Wheels
+    ctx.fillStyle = "#111";
+    ctx.beginPath();
+    ctx.arc(10, 58, 4, 0, Math.PI * 2);
+    ctx.arc(40, 58, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Legs
+    ctx.fillStyle = "#1f5ed6";
+    ctx.fillRect(18, 30, 6, 15);
+    ctx.fillRect(28, 30, 6, 15);
+
+    // Shirt
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(14, 15, 24, 18);
+
+    // Arms
+    ctx.fillStyle = "#f2c9a0";
+    ctx.fillRect(10, 17, 4, 14);
+    ctx.fillRect(38, 17, 4, 14);
+
+    // Head
+    ctx.beginPath();
+    ctx.arc(26, 8, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Backwards cap
+    ctx.fillStyle = "#e53935";
+    ctx.beginPath();
+    ctx.arc(26, 6, 9, Math.PI, 0);
+    ctx.fill();
+
+    ctx.restore();
+}
+
 function drawStartScreen() {
-    const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    grad.addColorStop(0, "#1b1f3b");
-    grad.addColorStop(1, "#0f2027");
-    ctx.fillStyle = grad;
+    ctx.fillStyle = "#0f2027";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const bounce = Math.sin(time * 0.05) * 5;
+    const bounce = Math.sin(time * 0.05) * 6;
     ctx.fillStyle = "#fff";
     ctx.font = "72px Arial Black";
     ctx.fillText("JUMPR", 260, 140 + bounce);
@@ -268,11 +375,13 @@ function draw() {
     ctx.fillStyle = "#87ceeb";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    drawCity();
+    drawClouds();
+
     ctx.fillStyle = "#444";
     ctx.fillRect(0, GROUND_Y + player.h, canvas.width, 40);
 
-    ctx.fillStyle = "#ffcc00";
-    ctx.fillRect(player.x, player.y, player.w, player.h);
+    drawPlayer();
 
     ctx.fillStyle = obstacle.color;
     ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
@@ -297,6 +406,7 @@ function loop() {
     draw();
     requestAnimationFrame(loop);
 }
+
 
 loop();
 </script>
