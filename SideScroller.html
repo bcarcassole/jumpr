@@ -133,10 +133,10 @@ let cityX = 0;
 
 // Obstacles
 const obstacleTypes = [
-    { w: 40, h: 35, color: "#7f8c8d" }, // gray rock
-    { w: 50, h: 45, color: "#a97142" }, // brown boulder
-    { w: 35, h: 60, color: "#556b2f" }, // tall mossy rock
-    { w: 60, h: 30, color: "#8e5a2b" }  // flat stone
+    { type: "rock",     w: 45, h: 35 },
+    { type: "cone",     w: 30, h: 50 },
+    { type: "wall",     w: 70, h: 40 },
+    { type: "hydrant",  w: 35, h: 55 }
 ];
 
 let obstacle;
@@ -185,12 +185,17 @@ function resetGame() {
 
 function createObstacle() {
     const t = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+
     return {
-        x: canvas.width + 100,
-        y: GROUND_Y + (player.h - t.h),
+        type: t.type,
         w: t.w,
         h: t.h,
-        color: t.color
+
+        // Spawn off-screen to the right
+        x: canvas.width + 80,
+
+        // Anchor to ground
+        y: (GROUND_Y + player.h) - t.h
     };
 }
 
@@ -380,26 +385,108 @@ function drawPlayer() {
 }
 
 function drawObstacle(obs) {
+    switch (obs.type) {
+        case "rock":     drawRock(obs); break;
+        case "cone":     drawCone(obs); break;
+        case "wall":     drawBrickWall(obs); break;
+        case "hydrant":  drawHydrant(obs); break;
+    }
+}
+
+function drawRock(o) {
     ctx.save();
-    ctx.translate(obs.x + obs.w / 2, obs.y + obs.h / 2);
+    ctx.translate(o.x + o.w / 2, o.y + o.h / 2);
 
-    ctx.fillStyle = obs.color;
+    ctx.fillStyle = "#7f8c8d";
     ctx.beginPath();
-
-    // Rock-like shape
-    ctx.moveTo(-obs.w / 2, obs.h / 4);
-    ctx.quadraticCurveTo(0, -obs.h / 2, obs.w / 2, obs.h / 4);
-    ctx.quadraticCurveTo(obs.w / 3, obs.h / 2, 0, obs.h / 2);
-    ctx.quadraticCurveTo(-obs.w / 3, obs.h / 2, -obs.w / 2, obs.h / 4);
-
+    ctx.moveTo(-o.w/2, 0);
+    ctx.quadraticCurveTo(-o.w/3, -o.h/2, 0, -o.h/2);
+    ctx.quadraticCurveTo(o.w/2, -o.h/3, o.w/2, 0);
+    ctx.quadraticCurveTo(o.w/3, o.h/2, 0, o.h/2);
+    ctx.quadraticCurveTo(-o.w/2, o.h/3, -o.w/2, 0);
     ctx.fill();
 
-    // Shading highlight
+    // Highlight
     ctx.globalAlpha = 0.25;
     ctx.fillStyle = "#fff";
     ctx.beginPath();
-    ctx.ellipse(-obs.w / 6, -obs.h / 6, obs.w / 6, obs.h / 8, 0, 0, Math.PI * 2);
+    ctx.ellipse(-o.w/6, -o.h/6, o.w/6, o.h/8, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.restore();
+}
+
+function drawCone(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+
+    // Base
+    ctx.fillStyle = "#c0392b";
+    ctx.fillRect(0, o.h - 8, o.w, 8);
+
+    // Cone
+    ctx.fillStyle = "#f39c12";
+    ctx.beginPath();
+    ctx.moveTo(o.w / 2, 0);
+    ctx.lineTo(o.w, o.h - 8);
+    ctx.lineTo(0, o.h - 8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Stripe
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(o.w * 0.2, o.h * 0.45, o.w * 0.6, 5);
+
+    ctx.restore();
+}
+
+function drawBrickWall(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+
+    ctx.fillStyle = "#8e5a2b";
+    ctx.fillRect(0, 0, o.w, o.h);
+
+    // Brick pattern
+    ctx.strokeStyle = "rgba(0,0,0,0.25)";
+    ctx.lineWidth = 1;
+
+    const brickH = 10;
+    const brickW = 20;
+
+    for (let y = 0; y < o.h; y += brickH) {
+        for (let x = (y / brickH) % 2 ? 0 : -brickW/2; x < o.w; x += brickW) {
+            ctx.strokeRect(x, y, brickW, brickH);
+        }
+    }
+
+    ctx.restore();
+}
+
+function drawHydrant(o) {
+    ctx.save();
+    ctx.translate(o.x + o.w / 2, o.y);
+
+    // Body
+    ctx.fillStyle = "#c0392b";
+    ctx.fillRect(-o.w/4, o.h * 0.2, o.w/2, o.h * 0.6);
+
+    // Top dome
+    ctx.beginPath();
+    ctx.arc(0, o.h * 0.2, o.w/3, Math.PI, 0);
+    ctx.fill();
+
+    // Side nozzles
+    ctx.fillRect(-o.w/2, o.h * 0.35, o.w/4, o.h * 0.15);
+    ctx.fillRect(o.w/4, o.h * 0.35, o.w/4, o.h * 0.15);
+
+    // Base
+    ctx.fillRect(-o.w/3, o.h * 0.8, o.w * 0.66, o.h * 0.15);
+
+    // Highlight
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(-o.w/6, o.h * 0.3, o.w/12, o.h * 0.4);
 
     ctx.restore();
 }
