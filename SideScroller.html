@@ -97,6 +97,9 @@ const GROUND_Y = 220;
 // NEW (50% height, same airtime)
 const GRAVITY = 0.225;
 const JUMP_FORCE = -8.5;
+const CITY_SPEED = 0.3;
+const CITY_SPACING = 100;
+const CITY_ALPHA = 0.35;
 
 // ==================================================
 // STATE
@@ -106,6 +109,7 @@ let gameOver = false;
 let speed = 3;
 let score = 0;
 let time = 0;
+let cityOffset = 0;
 
 // Player
 const player = {
@@ -196,8 +200,11 @@ function createObstacle() {
 function update() {
     time++;
 
-    // ✅ Backgrounds ALWAYS move
-    cityX -= 0.3;
+	// City background scrolls forever
+	cityOffset -= CITY_SPEED;
+	if (cityOffset <= -CITY_SPACING) {
+			cityOffset += CITY_SPACING;
+	}
 
     clouds.forEach(c => {
         c.x -= 0.2;
@@ -248,19 +255,21 @@ function update() {
 // ==================================================
 // DRAW
 // ==================================================
-const CITY_SPACING = 100;
 
 function drawCity() {
     ctx.save();
-    ctx.globalAlpha = 0.35;
+    ctx.globalAlpha = CITY_ALPHA;
 
     const groundY = GROUND_Y + player.h;
 
-    // Draw enough buildings to cover screen + buffer
-    for (let i = -2; i < canvas.width / CITY_SPACING + 3; i++) {
-        const x = i * CITY_SPACING + cityX;
+    // How many buildings we need to fully cover screen + buffer
+    const buildingCount = Math.ceil(canvas.width / CITY_SPACING) + 3;
 
-        const width = 40 + (i % 3) * 20;
+    for (let i = -1; i < buildingCount; i++) {
+        const x = i * CITY_SPACING + cityOffset;
+
+        // Deterministic variation
+        const width = 50 + (i % 3) * 15;
         const height = 90 + (i % 5) * 25;
         const topY = groundY - height;
 
@@ -268,15 +277,26 @@ function drawCity() {
         ctx.fillStyle = "#1f2433";
         ctx.fillRect(x, topY, width, height);
 
-        // Windows
-        for (let y = topY + 10; y < groundY - 10; y += 18) {
-            for (let wx = x + 8; wx < x + width - 8; wx += 12) {
-                if ((i + y + wx) % 4 === 0) {
-                    ctx.fillStyle = Math.random() > 0.5
-                        ? "rgba(255,220,140,0.5)"
-                        : "rgba(180,220,255,0.45)";
-                    ctx.fillRect(wx, y, 6, 8);
-                }
+        // Windows (stable pattern, no flicker)
+        const rows = Math.floor(height / 18);
+        const cols = Math.floor(width / 14);
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                // Deterministic "randomness"
+                if ((i + r + c) % 3 !== 0) continue;
+
+                ctx.fillStyle =
+                    (i + r + c) % 2 === 0
+                        ? "rgba(255,220,140,0.5)"   // warm light
+                        : "rgba(180,220,255,0.45)"; // cool light
+
+                ctx.fillRect(
+                    x + 8 + c * 14,
+                    topY + 10 + r * 18,
+                    6,
+                    8
+                );
             }
         }
     }
