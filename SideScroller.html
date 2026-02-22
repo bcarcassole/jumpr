@@ -94,8 +94,9 @@ function crashSound() {
 // GAME CONSTANTS
 // ==================================================
 const GROUND_Y = 220;
-const GRAVITY = 0.45;
-const JUMP_FORCE = -17;
+// NEW (50% height, same airtime)
+const GRAVITY = 0.225;
+const JUMP_FORCE = -8.5;
 
 // ==================================================
 // STATE
@@ -128,10 +129,10 @@ let cityX = 0;
 
 // Obstacles
 const obstacleTypes = [
-    { w: 30, h: 50, color: "#ff5c5c" },
-    { w: 30, h: 80, color: "#5cc8ff" },
-    { w: 60, h: 40, color: "#5cff8a" },
-    { w: 50, h: 60, color: "#ffd35c" }
+    { w: 40, h: 35, color: "#7f8c8d" }, // gray rock
+    { w: 50, h: 45, color: "#a97142" }, // brown boulder
+    { w: 35, h: 60, color: "#556b2f" }, // tall mossy rock
+    { w: 60, h: 30, color: "#8e5a2b" }  // flat stone
 ];
 
 let obstacle;
@@ -247,43 +248,34 @@ function update() {
 // ==================================================
 // DRAW
 // ==================================================
+const CITY_SPACING = 100;
+
 function drawCity() {
     ctx.save();
-
-    // Distant city haze
     ctx.globalAlpha = 0.35;
 
     const groundY = GROUND_Y + player.h;
-    const buildingSpacing = 90;
 
-    for (let i = 0; i < 16; i++) {
-        const x = (i * buildingSpacing + cityX) % (canvas.width + buildingSpacing);
-        const width = 40 + (i % 3) * 15;
-        const height = 70 + (i % 5) * 22;
+    // Draw enough buildings to cover screen + buffer
+    for (let i = -2; i < canvas.width / CITY_SPACING + 3; i++) {
+        const x = i * CITY_SPACING + cityX;
 
-        const buildingTopY = groundY - height;
+        const width = 40 + (i % 3) * 20;
+        const height = 90 + (i % 5) * 25;
+        const topY = groundY - height;
 
         // Building body
         ctx.fillStyle = "#1f2433";
-        ctx.fillRect(x, buildingTopY, width, height);
+        ctx.fillRect(x, topY, width, height);
 
         // Windows
-        const rows = Math.floor(height / 18);
-        const cols = Math.floor(width / 12);
-
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-                if ((r + c + i) % 3 === 0) {
+        for (let y = topY + 10; y < groundY - 10; y += 18) {
+            for (let wx = x + 8; wx < x + width - 8; wx += 12) {
+                if ((i + y + wx) % 4 === 0) {
                     ctx.fillStyle = Math.random() > 0.5
-                        ? "rgba(255, 220, 120, 0.55)"
-                        : "rgba(180, 220, 255, 0.45)";
-
-                    ctx.fillRect(
-                        x + 6 + c * 12,
-                        buildingTopY + 6 + r * 18,
-                        6,
-                        8
-                    );
+                        ? "rgba(255,220,140,0.5)"
+                        : "rgba(180,220,255,0.45)";
+                    ctx.fillRect(wx, y, 6, 8);
                 }
             }
         }
@@ -349,6 +341,31 @@ function drawPlayer() {
     ctx.restore();
 }
 
+function drawObstacle(obs) {
+    ctx.save();
+    ctx.translate(obs.x + obs.w / 2, obs.y + obs.h / 2);
+
+    ctx.fillStyle = obs.color;
+    ctx.beginPath();
+
+    // Rock-like shape
+    ctx.moveTo(-obs.w / 2, obs.h / 4);
+    ctx.quadraticCurveTo(0, -obs.h / 2, obs.w / 2, obs.h / 4);
+    ctx.quadraticCurveTo(obs.w / 3, obs.h / 2, 0, obs.h / 2);
+    ctx.quadraticCurveTo(-obs.w / 3, obs.h / 2, -obs.w / 2, obs.h / 4);
+
+    ctx.fill();
+
+    // Shading highlight
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.ellipse(-obs.w / 6, -obs.h / 6, obs.w / 6, obs.h / 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
 function drawStartScreen() {
     ctx.fillStyle = "#0f2027";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -383,8 +400,7 @@ function draw() {
 
     drawPlayer();
 
-    ctx.fillStyle = obstacle.color;
-    ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
+	drawObstacle(obstacle);
 
     ctx.fillStyle = "#000";
     ctx.font = "18px Arial";
